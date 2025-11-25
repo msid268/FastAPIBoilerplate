@@ -6,7 +6,7 @@ import logging
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.api.v1.router import api_router
-from app.middleware.logging_middleware import LoggingMiddleware
+from app.middleware.logging_middleware import RequestLoggingMiddleware
 
 # setup logging
 setup_logging()
@@ -42,7 +42,7 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOW_HEADERS
 )
 
-app.add_middleware(LoggingMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
@@ -63,6 +63,6 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=6710,
-        reload=settings.DEBUG,
+        reload=not settings.DEBUG,
         log_config=None,  # Use our custom logging
     )

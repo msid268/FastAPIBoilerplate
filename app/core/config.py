@@ -10,15 +10,14 @@ class Settings(BaseSettings):
     APP_VERSION:str = "1.0.0"
     DEBUG:bool =False
     ENVIRONMENT:str = "development"
-    SERVER_NAME:str = os.getenv("server_instance")
+    SERVER_NAME:str = os.getenv("server_instance") or "localhost"
     
     # ------------------------------------ API ----------------------------------- #
     API_V1_PREFIX:str = "/api/v1 "
     ALLOWED_HOSTS: List[str] = ["*"]
     
     # --------------------------------- Database --------------------------------- #
-    DATABASE_SERVER:str =os.getenv("db_server_name")
-    print(DATABASE_SERVER)
+    DATABASE_SERVER:str =os.getenv("db_server_name") or "localhost"
     DATABASE_USER:str = ""
     DATABASE_PASSWORD:str = ""
     DATABASE_NAME:str = ""

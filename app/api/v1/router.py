@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 import app.api.v1.endpoints.migration as migration
 import app.api.v1.logs as logs
-import app.api.v1.endpoints.llm_endpoints as llm_endpoints
+# import app.api.v1.endpoints.llm_endpoints as llm_endpoints
 
 api_router = APIRouter()
 
@@ -20,8 +20,8 @@ api_router.include_router(
     tags=['migration']
 )
 
-api_router.include_router(
-    llm_endpoints.router,
-    prefix = "/llm",
-    tags=['llm_endpoints']
-)
+# api_router.include_router(
+#     llm_endpoints.router,
+#     prefix = "/llm",
+#     tags=['llm_endpoints']
+# )

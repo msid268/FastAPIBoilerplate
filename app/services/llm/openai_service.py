@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 import logging 
 from openai import AsyncOpenAI
 from app.core.config import settings 
-from app.core.decorators import log_action 
+# from app.core.decorators import log_action 
 
 logger = logging.getLogger(__name__)
 

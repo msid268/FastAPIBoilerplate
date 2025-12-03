@@ -10,14 +10,14 @@ class Settings(BaseSettings):
     APP_VERSION:str = "1.0.0"
     DEBUG:bool =False
     ENVIRONMENT:str = "development"
-    SERVER_NAME:str = os.getenv("server_instance") or "localhost"
+    SERVER_NAME:str = os.getenv("server_instance")
     
     # ------------------------------------ API ----------------------------------- #
     API_V1_PREFIX:str = "/api/v1 "
     ALLOWED_HOSTS: List[str] = ["*"]
     
     # --------------------------------- Database --------------------------------- #
-    DATABASE_SERVER:str =os.getenv("db_server_name") or "localhost"
+    DATABASE_SERVER:str =os.getenv("db_server_name")
     DATABASE_USER:str = ""
     DATABASE_PASSWORD:str = ""
     DATABASE_NAME:str = ""
@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     LOG_MAX_SIZE:int =10
     LOG_BACKUP_COUNT:int =10
     
+    # Request Logging
+    LOG_REQUEST_BODY: bool = True  # Whether to log request bodies
+    LOG_RESPONSE_BODY_ON_ERROR: bool = True  # Log response only on errors
+    MAX_BODY_LOG_SIZE: int = 10000  # Max chars to log for bodies
+    
     # ---------------------------------- OPENAI ---------------------------------- #
     OPENAI_API_KEY:str=""
     OPENAI_MODEL:str=""
@@ -54,6 +59,12 @@ class Settings(BaseSettings):
     AWS_REGION:str ="us-east-1"
     BEDROCK_MODEL_ID:str =""
     BEDROCK_MAX_TOKENS:int=8192
+    
+    # ---------------------------- INFERENCE SETTINGS ---------------------------- #
+    MAX_CONCURRENCY:int=16
+    RETRY_ATTEMPTS:int=3
+    RETRY_BASE_DELAYL:float=0.5 
+    LLM_PROVIDER:str = "bedrock"
     
     model_config = SettingsConfigDict(
         env_file=".env",

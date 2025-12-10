@@ -17,7 +17,7 @@ from typing import Optional, Dict, Any
 import json
 import logging
 
-from app.models.request_log import RequestLog, ActionLog
+from app.models.request_log import RequestLog, ActionLog, JobLog
 from app.db.session import get_db_context
 from app.core.config import settings
 
@@ -221,6 +221,7 @@ class LoggingService:
         function_name: Optional[str] = None,
         line_number: Optional[int] = None,
         input_params: Optional[Dict] = None,
+        job_id: str | None = None,
     ) -> Optional[int]:
         """
         Create an `ActionLog` row linked to an existing `RequestLog`.
@@ -241,7 +242,8 @@ class LoggingService:
             Source line number, by default None.
         input_params : Optional[Dict], optional
             Sanitized input parameters, by default None.
-
+        job_id : str
+            Correlation ID used to find the owning `JobLog`.
         Returns
         -------
         Optional[int]
@@ -249,22 +251,34 @@ class LoggingService:
         """
         try:
             with get_db_context() as db:
-                # We first look up the parent RequestLog so we can store the FK ID.
-                request_log: RequestLog | None = (
-                    db.query(RequestLog)
-                    .filter(RequestLog.request_id == request_id)
-                    .first()
-                )
+                request_log = None
+                job_log = None
 
-                if not request_log:
+                if request_id:
+                    request_log = (
+                        db.query(RequestLog)
+                        .filter(RequestLog.request_id == request_id)
+                        .first()
+                    )
+
+                if job_id:
+                    job_log = (
+                        db.query(JobLog)
+                        .filter(JobLog.job_id == job_id)
+                        .first()
+                    )
+
+                if not request_log and not job_log:
                     logger.warning(
-                        "Request log not found for action; request_id=%s",
+                        "No parent log found for action; request_id=%s job_id=%s",
                         request_id,
+                        job_id,
                     )
                     return None
 
                 action_log = ActionLog(
-                    request_id=request_log.id,  # DB FK (PK of RequestLog)
+                    request_id=request_log.id if request_log else None,
+                    job_log_id=job_log.id if job_log else None,
                     action_type=action_type,
                     action_name=action_name,
                     module_name=module_name,
@@ -276,14 +290,7 @@ class LoggingService:
 
                 db.add(action_log)
                 db.flush()
-                action_log_id = action_log.id
-
-                logger.debug(
-                    "Created action log: %s for request_id=%s",
-                    action_log_id,
-                    request_id,
-                )
-                return action_log_id
+                return action_log.id
         except Exception as exc:
             logger.error(
                 "Error creating action log for request %s: %s",
@@ -382,4 +389,81 @@ class LoggingService:
                 str(exc),
                 exc_info=True,
             )
+            return False
+
+    @staticmethod
+    def create_job_log(
+        job_id: str,
+        request_id: str | None = None,
+        input_payload: Any | None = None,
+        status: str = "queued",
+    ) -> Optional[int]:
+        try:
+            with get_db_context() as db:
+                req_log = None
+                if request_id:
+                    req_log = (
+                        db.query(RequestLog)
+                        .filter(RequestLog.request_id == request_id)
+                        .first()
+                    )
+
+                job_log = JobLog(
+                    job_id=job_id,
+                    request_log_id=req_log.id if req_log else None,
+                    status=status,
+                    created_at=datetime.utcnow(),
+                    input_payload=LoggingService.sanitize_data(input_payload),
+                )
+                db.add(job_log)
+                db.flush()
+                return job_log.id
+        except Exception as exc:
+            logger.error("Error creating job log %s: %s", job_id, exc, exc_info=True)
+            return None
+
+    @staticmethod
+    def update_job_log(
+        job_id: str,
+        *,
+        status: Optional[str] = None,
+        result_payload: Any | None = None,
+        error_message: str | None = None,
+        error_traceback: str | None = None,
+        mark_started: bool = False,
+        mark_finished: bool = False,
+    ) -> bool:
+        try:
+            with get_db_context() as db:
+                job_log: JobLog | None = (
+                    db.query(JobLog).filter(JobLog.job_id == job_id).first()
+                )
+                if not job_log:
+                    logger.warning("Job log not found: %s", job_id)
+                    return False
+
+                now = datetime.utcnow()
+                if mark_started and not job_log.started_at:
+                    job_log.started_at = now
+                    job_log.status = status or "running"
+
+                if mark_finished:
+                    job_log.finished_at = now
+                    if status:
+                        job_log.status = status
+
+                if status:
+                    job_log.status = status
+
+                if result_payload is not None:
+                    job_log.result_payload = LoggingService.sanitize_data(result_payload)
+
+                if error_message:
+                    job_log.error_message = error_message
+                if error_traceback:
+                    job_log.error_traceback = error_traceback
+
+                return True
+        except Exception as exc:
+            logger.error("Error updating job log %s: %s", job_id, exc, exc_info=True)
             return False

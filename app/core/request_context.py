@@ -63,6 +63,8 @@ current_request_id: ContextVar[Optional[str]] = ContextVar(
 )
 
 
+current_job_id = ContextVar("current_job_id", default=None)
+
 def get_request_id() -> Optional[str]:
     """
     Get the current request ID stored in the context.

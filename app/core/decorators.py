@@ -237,6 +237,23 @@ def _filter_params(bound: inspect.BoundArguments) -> Mapping[str, Any]:
     return filtered
 
 
+from app.core.request_context import current_request_id, current_job_id
+
+def _find_job_id(args: tuple[Any, ...], kwargs: dict[str, Any]) -> Optional[str]:
+    # 1) explicit kwarg
+    if "job_id" in kwargs and isinstance(kwargs["job_id"], str):
+        return kwargs["job_id"]
+
+    # 2) positional arg with attribute `.job_id`
+    for obj in args:
+        jid = getattr(obj, "job_id", None)
+        if isinstance(jid, str):
+            return jid
+
+    # 3) context var set by worker
+    return current_job_id.get()
+
+
 def log_action(
     action_type: str,
     action_name: Optional[str] = None,
@@ -292,6 +309,7 @@ def log_action(
 
         def create_action_log(
             request_id: Optional[str],
+            job_id: Optional[str],
             input_params: Optional[Mapping[str, Any]],
         ) -> Optional[int]:
             """
@@ -310,7 +328,7 @@ def log_action(
                 The ``action_log_id`` from :class:`LoggingService`, or ``None``
                 if logging is skipped or fails.
             """
-            if not request_id:
+            if not request_id and not job_id:
                 # No request context available (e.g. background task,
                 # CLI script, or logging not wired yet).
                 logger.debug("No request_id found, skipping action log creation")
@@ -318,6 +336,7 @@ def log_action(
             try:
                 return LoggingService.create_action_log(
                     request_id=request_id,
+                    job_id=job_id,
                     action_type=action_type,
                     action_name=resolved_action_name,
                     module_name=module_name,
@@ -391,7 +410,7 @@ def log_action(
             declared with ``async def``.
             """
             request_id = _find_request_id(args, kwargs)
-
+            job_id = _find_job_id(args, kwargs)
             input_params: Optional[Mapping[str, Any]] = None
             if log_params:
                 try:
@@ -404,7 +423,7 @@ def log_action(
                     # (e.g. weird *args/**kwargs combination), we just log it.
                     logger.debug("Could not capture parameters: %s", exc, exc_info=True)
 
-            action_log_id = create_action_log(request_id, input_params)
+            action_log_id = create_action_log(request_id, job_id, input_params)
 
             try:
                 result = func(*args, **kwargs)
@@ -424,7 +443,8 @@ def log_action(
             as ``async def``.
             """
             request_id = _find_request_id(args, kwargs)
-
+            job_id = _find_job_id(args, kwargs)
+            
             input_params: Optional[Mapping[str, Any]] = None
             if log_params:
                 try:
@@ -435,7 +455,7 @@ def log_action(
                 except Exception as exc:
                     logger.debug("Could not capture parameters: %s", exc, exc_info=True)
 
-            action_log_id = create_action_log(request_id, input_params)
+            action_log_id = create_action_log(request_id, job_id, input_params)
 
             try:
                 result = await func(*args, **kwargs)

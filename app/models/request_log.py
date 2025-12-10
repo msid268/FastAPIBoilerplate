@@ -1,9 +1,12 @@
 from __future__ import annotations
 from typing import List, Optional
-from sqlalchemy import Integer, Text, Float, Index, ForeignKey
+from sqlalchemy import Integer, Text, Float, Index, ForeignKey,  Enum as SAEnum, String, DateTime
 from sqlalchemy.dialects.mssql import NVARCHAR, DATETIME2
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+from enum import Enum as PyEnum
+from datetime import datetime
+
 from app.db.base import Base
 
 
@@ -19,6 +22,7 @@ class ActionLog(Base):
         index=True,
         nullable=False,
     )
+    job_log_id: Mapped[int] = mapped_column(Integer, ForeignKey("job_logs.id", ondelete="CASCADE"), nullable=True)
 
     action_type: Mapped[Optional[str]] = mapped_column(NVARCHAR(36), index=True)
     action_name: Mapped[str] = mapped_column(NVARCHAR(200), nullable=False)
@@ -88,3 +92,48 @@ class RequestLog(Base):
         Index("idx_request_logs_composite", "method", "is_error"),
     )
 
+class JobStatusEnum(str, PyEnum):
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class JobLog(Base):
+    __tablename__ = "job_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+
+    # what the client sees
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    # which request created this job, if any
+    # NOTE: adjust "request.id" to match RequestLog.__tablename__
+    request_log_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("request.id"),  # or "request_logs.id" if that's your real table name
+        nullable=True,
+    )
+    request_log: Mapped[Optional["RequestLog"]] = relationship(
+        back_populates="jobs"
+    )
+
+    status: Mapped[JobStatusEnum] = mapped_column(
+        SAEnum(JobStatusEnum),
+        default=JobStatusEnum.queued,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    # optional: payload + results
+    input_payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result_payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_traceback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

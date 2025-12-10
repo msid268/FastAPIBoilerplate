@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import json
 import logging
+from pydantic import BaseModel
 
 from app.models.request_log import RequestLog, ActionLog, JobLog
 from app.db.session import get_db_context
@@ -214,9 +215,9 @@ class LoggingService:
 
     @staticmethod
     def create_action_log(
-        request_id: str,
-        action_type: str,
         action_name: str,
+        request_id: Optional[str] = None,
+        action_type: Optional[str] = None,
         module_name: Optional[str] = None,
         function_name: Optional[str] = None,
         line_number: Optional[int] = None,
@@ -344,11 +345,26 @@ class LoggingService:
                 action_log.end_time = end_time
                 action_log.duration_ms = duration
 
+                # ------------------------------------------------------------------
+                # Normalize output_result for storage / token extraction
+                # ------------------------------------------------------------------
+                normalized_for_tokens: Optional[dict] = None
+
                 if output_result is not None:
-                    # We store a sanitized representation only – not the raw value.
+                    # Store sanitized representation (whatever sanitize_data does)
                     action_log.output_results = LoggingService.sanitize_data(
                         output_result
                     )
+
+                    # For token_details we need something dict-like
+                    if isinstance(output_result, dict):
+                        normalized_for_tokens = output_result
+                    elif isinstance(output_result, BaseModel):
+                        # pydantic v2: model_dump, v1: dict
+                        if hasattr(output_result, "model_dump"):
+                            normalized_for_tokens = output_result.model_dump()
+                        elif hasattr(output_result, "dict"):
+                            normalized_for_tokens = output_result.dict()
 
                 if error_message:
                     action_log.error_message = error_message
@@ -357,27 +373,40 @@ class LoggingService:
                 if error_traceback:
                     action_log.error_traceback = error_traceback
 
-                # LLM-related metadata is optional; we only touch fields
-                # when values are provided.
-                
-                if output_result.get("token_details"):
-                    token_details = output_result.get("token_details")
-                    action_log.llm_provider = getattr(settings, 'LLM_PROVIDER')
-                    if getattr(settings, 'LLM_PROVIDER') == 'bedrock':
-                        action_log.llm_model = getattr(settings, 'BEDROCK_MODEL_ID')
-                    elif getattr(settings, 'LLM_PROVIDER') == 'openai':
-                        action_log.llm_model = getattr(settings, 'OPENAI_MODEL')
-                    else:
-                        action_log.llm_model = None
+                # ------------------------------------------------------------------
+                # LLM-related metadata (optional)
+                # ------------------------------------------------------------------
+                if normalized_for_tokens is not None:
+                    token_details = normalized_for_tokens.get("token_details")
+                    if token_details:
+                        action_log.llm_provider = getattr(settings, "LLM_PROVIDER", None)
 
-                    if token_details.get("input_tokens") is not None:
-                        action_log.llm_prompt_tokens = token_details.get("input_tokens")
+                        provider = getattr(settings, "LLM_PROVIDER", None)
+                        if provider == "bedrock":
+                            action_log.llm_model = getattr(
+                                settings, "BEDROCK_MODEL_ID", None
+                            )
+                        elif provider == "openai":
+                            action_log.llm_model = getattr(
+                                settings, "OPENAI_MODEL", None
+                            )
+                        else:
+                            action_log.llm_model = None
 
-                    if token_details.get("output_tokens") is not None:
-                        action_log.llm_completion_tokens = token_details.get("output_tokens")
+                        if token_details.get("input_tokens") is not None:
+                            action_log.llm_prompt_tokens = token_details.get(
+                                "input_tokens"
+                            )
 
-                    if token_details.get("total_tokens") is not None:
-                        action_log.llm_total_tokens = token_details.get("total_tokens")
+                        if token_details.get("output_tokens") is not None:
+                            action_log.llm_completion_tokens = token_details.get(
+                                "output_tokens"
+                            )
+
+                        if token_details.get("total_tokens") is not None:
+                            action_log.llm_total_tokens = token_details.get(
+                                "total_tokens"
+                            )
 
                 logger.debug("Updated action log: %s", action_log_id)
                 return True
@@ -390,7 +419,6 @@ class LoggingService:
                 exc_info=True,
             )
             return False
-
     @staticmethod
     def create_job_log(
         job_id: str,

@@ -19,11 +19,10 @@ class ActionLog(Base):
     request_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("request.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
+        nullable=True,
     )
     job_log_id: Mapped[int] = mapped_column(Integer, ForeignKey("job_logs.id", ondelete="CASCADE"), nullable=True)
-
+    
     action_type: Mapped[Optional[str]] = mapped_column(NVARCHAR(36), index=True)
     action_name: Mapped[str] = mapped_column(NVARCHAR(200), nullable=False)
 
@@ -86,7 +85,10 @@ class RequestLog(Base):
     action_logs: Mapped[List["ActionLog"]] = relationship(
         back_populates="request", cascade="all, delete-orphan"
     )
-
+    jobs: Mapped[List["JobLog"]] = relationship(
+        back_populates="request_log",
+        cascade="all, delete-orphan",
+    )
     __table_args__ = (
         Index("idx_request_logs_start_time", "start_time"),
         Index("idx_request_logs_composite", "method", "is_error"),
@@ -129,8 +131,8 @@ class JobLog(Base):
         default=datetime.utcnow,
         nullable=False,
     )
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # optional: payload + results
     input_payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
